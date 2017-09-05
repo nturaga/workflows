@@ -1,0 +1,21 @@
+Package: bamvis
+Title: Visualising BAM files
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role="aut", "Paul", "Theodor Pyl", email = "pyl@embl.de"))
+Description: In this workflow we will create overview plots of genomic regions that give an overview of the coverage and mismatches in a set of `.bam` files in a given genomic region.
+Depends: R (>= 3.3.0),
+        h5vc,
+        GenomicRanges,
+        IRanges,
+        BSgenome.Hsapiens.NCBI.GRCh38,
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: Visualization, Coverage
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+Author: Paul Theodor Pyl
+Maintainer: Paul Theodor Pyl <pyl@embl.de>
+URL: https://bioconductor.org
