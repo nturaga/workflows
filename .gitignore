@@ -1,0 +1,6 @@
+subscribers.txt
+subs.html
+*.tar.gz
+*/*.svn
+*/*.Rhistory
+.Rhistory

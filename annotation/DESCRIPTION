@@ -1,0 +1,36 @@
+Package: annotation
+Title: Genomic Annotation Resources
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role="aut", "Marc", "RJ Carlson", email = "mrjc42@gmail.com"),
+            person(role="aut", "Herve", "Pages", email = "hpages@fredhutch.org"),
+            person(role="aut", "Sonali", "Arora", email = "sarora@fredhutch.org"),
+            person(role="aut", "Valerie", "Obenchain", email = "valerie.obenchain@roswellpark.org"),
+            person(role=c("aut", "cre"), "Martin", "Morgan", email = "martin.morgan@roswellpark.org"))
+Description: Annotation resources make up a significant proportion of the Bioconductor
+    project. And there are also a diverse set of online resources available
+    which are accessed using specific packages.  This walkthrough will describe the
+    most popular of these resources and give some high level examples on how to use
+    them.
+Depends: R (>= 3.3.0),
+         VariantAnnotation,
+         AnnotationHub,
+         TxDb.Hsapiens.UCSC.hg19.knownGene,
+         TxDb.Mmusculus.UCSC.mm10.ensGene,
+         org.Hs.eg.db, org.Mm.eg.db,
+         Homo.sapiens,
+         BSgenome.Hsapiens.UCSC.hg19,
+         biomaRt,
+         BSgenome,
+         TxDb.Athaliana.BioMart.plantsmart22,
+         Homo.sapiens
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: Annotation, AnnotationData, FunctionalAnnotation 
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+Author: Marc RJ Carlson, Herve Pages, Sonali Arora, Valerie Obenchain, and Martin Morgan
+Maintainer: Marc RJ Carlson <mrjc42@gmail.com>
+URL:http://bioconductor.org/help/workflows/annotation/Annotation_Resources/
