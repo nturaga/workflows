@@ -4,3 +4,5 @@ subs.html
 */*.svn
 */*.Rhistory
 .Rhistory
+*.py
+*.pyc

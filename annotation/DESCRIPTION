@@ -6,7 +6,8 @@ Authors@R: c(person(role="aut", "Marc", "RJ Carlson", email = "mrjc42@gmail.com"
             person(role="aut", "Herve", "Pages", email = "hpages@fredhutch.org"),
             person(role="aut", "Sonali", "Arora", email = "sarora@fredhutch.org"),
             person(role="aut", "Valerie", "Obenchain", email = "valerie.obenchain@roswellpark.org"),
-            person(role=c("aut", "cre"), "Martin", "Morgan", email = "martin.morgan@roswellpark.org"))
+            person(role="aut", "Martin", "Morgan", email = "martin.morgan@roswellpark.org"),
+            person(role="cre", "Bioconductor Package Maintainer", email = "maintainer@bioconductor.org"))
 Description: Annotation resources make up a significant proportion of the Bioconductor
     project. And there are also a diverse set of online resources available
     which are accessed using specific packages.  This walkthrough will describe the
@@ -22,8 +23,7 @@ Depends: R (>= 3.3.0),
          BSgenome.Hsapiens.UCSC.hg19,
          biomaRt,
          BSgenome,
-         TxDb.Athaliana.BioMart.plantsmart22,
-         Homo.sapiens
+         TxDb.Athaliana.BioMart.plantsmart22
 License: Artistic-2.0
 Encoding: UTF-8
 LazyData: true
@@ -31,6 +31,4 @@ VignetteBuilder: knitr
 biocViews: Annotation, AnnotationData, FunctionalAnnotation 
 Suggests: knitr, rmarkdown
 NeedsCompilation: no
-Author: Marc RJ Carlson, Herve Pages, Sonali Arora, Valerie Obenchain, and Martin Morgan
-Maintainer: Marc RJ Carlson <mrjc42@gmail.com>
-URL:http://bioconductor.org/help/workflows/annotation/Annotation_Resources/
+URL: http://bioconductor.org/help/workflows/annotation/Annotation_Resources/
