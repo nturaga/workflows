@@ -6,3 +6,4 @@ subs.html
 .Rhistory
 *.py
 *.pyc
+*/.BBS*
