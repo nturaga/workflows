@@ -28,7 +28,8 @@ License: Artistic-2.0
 Encoding: UTF-8
 LazyData: true
 VignetteBuilder: knitr
-biocViews: Annotation, AnnotationData, FunctionalAnnotation 
+biocViews: Annotation, VariantAnnotation
+Workflow: true
 Suggests: knitr, rmarkdown
 NeedsCompilation: no
 URL: http://bioconductor.org/help/workflows/annotation/Annotation_Resources/
