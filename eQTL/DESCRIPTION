@@ -1,0 +1,35 @@
+Package: eQTL
+Title: Cloud-enabled cis-eQTL searches with Bioconductor GGtools 5.x
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role=c("aut","cre"), "Vincent", "Carey", email = "stvjc@channing.harvard.edu"))
+Description: This workflow focuses on searches for eQTL in cis, so that
+    DNA variants local to the gene assayed for expression are
+    tested for association.
+Depends: R (>= 3.3.0),
+    GGdata,
+    GGtools,
+    GenomeInfoDb,
+    S4Vectors,
+    SNPlocs.Hsapiens.dbSNP144.GRCh37,
+    bibtex,
+    biglm,
+    data.table,
+    doParallel,
+    foreach,
+    knitcitations,
+    lumi,
+    lumiHumanAll.db,
+    parallel,
+    rmeta,
+    scatterplot3d,
+    snpStats,
+    yri1kgv
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: SNP
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+URL: https://www.bioconductor.org/help/workflows/eQTL/
