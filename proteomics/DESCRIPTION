@@ -1,0 +1,29 @@
+Package: proteomics 
+Title:  Mass spectrometry and proteomics data analysis
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role=c("aut", "cre"), "Bioconductor Package Maintainer", email = "maintainer@bioconductor.org"))
+Description: This workflow illustrates R / Bioconductor infrastructure for
+    proteomics. Topics covered focus on support for open community-driven
+    formats for raw data and identification results, packages for
+    peptide-spectrum matching, data processing and analysis.
+Depends: R (>= 3.3.0),
+        mzR,
+        mzID,
+        MSnID,
+        MSnbase,
+        rpx,
+        MLInterfaces,
+        pRoloc,
+        pRolocdata,
+        MSGFplus,
+        rols,
+        hpar
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: Proteomics 
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+URL: https://www.bioconductor.org/help/workflows/proteomics/
