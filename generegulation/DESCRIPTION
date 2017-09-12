@@ -1,0 +1,34 @@
+Package: generegulation
+Title: Finding Candidate Binding Sites for Known Transcription Factors via Sequence Matching
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role=c("aut", "cre"), "Bioconductor Package Maintainer", email = "maintainer@bioconductor.org"))
+Description: The binding of transcription factor proteins (TFs) to DNA promoter
+ regions upstream of gene transcription start sites (TSSs) is one of
+ the most important mechanisms by which gene expression, and thus many
+ cellular processes, are controlled.  Though in recent years many new
+ kinds of data have become available for identifying transcription
+ factor binding sites (TFBSs) -- ChIP-seq and DNase I hypersensitivity
+ regions among them -- sequence matching continues to play an important
+ role. In this workflow we demonstrate Bioconductor techniques for finding
+ candidate TF binding sites in DNA sequence using the model organism
+ Saccharomyces cerevisiae.  The methods demonstrated here apply equally
+ well to other organisms.
+Depends: R (>= 3.3.0),
+         BSgenome.Scerevisiae.UCSC.sacCer3,
+         Biostrings,
+         GenomicFeatures,
+         MotifDb,
+         S4Vectors,
+         TxDb.Scerevisiae.UCSC.sacCer3.sgdGene,
+         motifStack,
+         org.Sc.sgd.db,
+         seqLogo
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: 
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+URL: https://www.bioconductor.org/help/workflows/generegulation/ 
