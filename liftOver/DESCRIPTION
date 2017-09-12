@@ -1,0 +1,24 @@
+Package: liftover
+Title: Changing genomic coordinate systems with rtracklayer::liftOver 
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role=c("aut", "cre"), "Bioconductor Package Maintainer", email = "maintainer@bioconductor.org"))
+Description: The liftOver facilities developed in conjunction with the UCSC
+    browser track infrastructure are available for transforming
+    data in GRanges formats.  This is illustrated here with
+    an image of the EBI/NHGRI GWAS catalog that is, as of May 10 2017,
+    distributed with coordinates defined by NCBI build hg38.
+Depends: R (>= 3.3.0),
+         gwascat,
+         GenomicRanges,
+         rtracklayer,
+         Homo.sapiens,
+         BiocGenerics
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: Infrastructure
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+URL: https://www.bioconductor.org/help/workflows/liftOver/
