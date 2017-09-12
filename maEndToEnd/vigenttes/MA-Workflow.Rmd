@@ -1,0 +1,1499 @@
+---
+title: An end to end workflow for differential gene expression using Affymetrix microarrays
+author:
+  name: Bernd Klaus
+  affiliation: European Molecular Biology Laboratory (EMBL), Heidelberg, Germany
+output: html_document
+bibliography: MA_end_to_end.bib
+csl: biometrics.csl
+vignette: >
+  %\VignetteIndexEntry{An end to end workflow for differential gene expression using Affymetrix microarrays}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+<!--
+To compile this document run
+graphics.off();rm(list=ls());rmarkdown::render('MA-Workflow.Rmd');
+-->
+
+<!--
+F1000 manuscript compilation
+graphics.off();rm(list=ls());rmarkdown::render('MA-Workflow.Rmd', 
+c("html_document", "pdf_document"), clean=FALSE);
+
+produce tex on command line
+
+pandoc MA-Workflow.utf8.md --output MA-Workflow.tex --to latex \
+--from markdown+autolink_bare_uris+ascii_identifiers+tex_math_single_backslash-implicit_figures \
+--template /home/bernd/R/x86_64-pc-linux-gnu-library/3.3/rmarkdown/rmd/latex/default.tex \
+--highlight-style tango --latex-engine pdflatex --variable 'geometry:margin=1in' \
+--bibliography MA_end_to_end.bib --biblatex
+
+sed 's/\\autocite/\\cite/g' MA-Workflow.tex | \
+sed 's/\\(/$/g' | \
+sed 's/\\)/$/g' | \
+sed 's/\.png/\.pdf/g' | \
+sed 's/MA-Workflow_files\/figure-latex\///g' > MA-Workflow_clean.tex
+-->
+
+<!--
+     # a list of all required libraries:
+     reqlibs = sub(".*library\\(\"(.*?)\"\\).*","\\1",grep("library\\(",readLines("MA-Workflow.Rmd"),value=TRUE))
+     find.package(reqlibs)
+-->
+
+<!--
+<script type="text/javascript"
+  src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+</script>
+-->
+
+```{r options, include=FALSE}
+library(BiocStyle)
+library(knitr)
+options(digits=3, width=80)
+opts_chunk$set(echo=TRUE,tidy=FALSE,include=TRUE,
+               dev=c('png', 'pdf'), fig.width = 6, fig.height = 3.5,
+               comment = '  ', dpi = 300,
+cache = TRUE)
+```
+
+
+# Abstract
+
+In this article, we walk through an end--to--end Affymetrix microarray differential
+expression workflow using Bioconductor packages. This workflow is directly 
+applicable to current "Gene" type arrays, e.g. the HuGene or MoGene arrays
+but can easily adapted to  similar platforms.
+The data re--analyzed is a typical clinical microarray data set that 
+compares inflammed and non--inflammed colon tissue in two disease subtypes.
+We will start from the raw data CEL files, show how to import them into a 
+Bioconductor ExpressionSet, perform quality control and normalization and finally
+differential gene expression (DE) analysis, followed by some enrichment 
+analysis. As experimental designs can be complex, a self contained introduction 
+to linear models is also part of the workflow. 
+
+# Introduction
+
+In this article we introduce a complete workflow for a typical (Affymetrix) microarray
+analysis. Data import, preprocessing, differential expression  and
+enrichment analysis are discussed. We also introduce some necessary mathematical
+background on linear models along the way.
+
+The data set used [@Palmieri_2015] is from 
+a paper studying the differences between  patients suffering from Ulcerative colitis (UC) or 
+Crohn's disease (CD).  This is a typical clinical data set consisting of 14 UC and
+15 CD patients from which inflamed and non--inflamed
+colonic mucosa tissue was obtained via a biopsy. Our aim is to analyze differential 
+expression (DE) between the tissues in the two  diseases.
+
+# Required packages and other preparations
+
+```{r, echo=FALSE, results="hide", warning=FALSE}
+suppressPackageStartupMessages({
+    library(Biobase)
+    library(oligoClasses)
+    library(knitr)
+    library(BiocStyle)
+    library(oligo)
+    library(geneplotter)
+    library(ggplot2)
+    library(dplyr)
+    library(LSD)
+    library(gplots)
+    library(RColorBrewer)
+    library(ArrayExpress)
+    library(arrayQualityMetrics)
+    library(stringr)
+    library(matrixStats)
+    library(topGO)
+    library(genefilter)
+    library(biomaRt)
+    library(pd.hugene.1.0.st.v1)
+    library(hugene10sttranscriptcluster.db)
+    library(pheatmap)
+    library(mvtnorm)
+    library(DAAG)
+    library(multcomp)
+    library(limma)
+    library(ReactomePA)
+    library(clusterProfiler)
+    library(openxlsx)
+    library(devtools)
+    library(biomaRt)
+    library(EnrichmentBrowser)
+})
+```
+
+
+```{r required packages and data, echo = TRUE}
+library(Biobase)
+library(oligoClasses)
+library(knitr)
+library(BiocStyle)
+library(oligo)
+library(geneplotter)
+library(ggplot2)
+library(dplyr)
+library(LSD)
+library(gplots)
+library(RColorBrewer)
+library(ArrayExpress)
+library(arrayQualityMetrics)
+library(stringr)
+library(matrixStats)
+library(topGO)
+library(genefilter)
+library(pd.hugene.1.0.st.v1)
+library(hugene10sttranscriptcluster.db)
+library(pheatmap)
+library(mvtnorm)
+library(DAAG)
+library(multcomp)
+library(limma)
+library(ReactomePA)
+library(clusterProfiler)
+library(openxlsx)
+library(devtools)
+library(biomaRt)
+library(EnrichmentBrowser)
+set.seed(777)
+raw_data_dir <- file.path(getwd(), "rawDataMAWorkflow")
+```
+
+
+# Download the raw data from from ArrayExpress
+
+The first step of the analysis is to download the raw data CEL files. These files
+are produced by the array scanner software and contain the probe intensities 
+measured. The data have been deposited at [ArrayExpress](https://www.ebi.ac.uk/arrayexpress/)
+and have the accession code **E-MTAB-2967**. 
+
+Each ArrayExpress data set has a landing page summarizing the data set, 
+and we use the `r Biocpkg("ArrayExpress") ` Bioconductor package to obtain the ftp 
+links  to the raw data files ([Data from Palmieri et. al. on ArrayEpress](https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-2967/)).
+
+# Information stored in ArrayExpress
+
+Each dataset at ArrayExpress is stored according to the MAGE--TAB 
+(MicroArray Gene Expression Tabular) specifications as a collection of
+tables bundled with the raw data. The MAGE--TAB format specifies  up to five 
+different types  of files, namely the
+Investigation Description Format (IDF), the Array Design Format (ADF),
+the Sample and Data Relationship Format (SDRF), the raw data files and
+the processed data files.
+
+For use, the IDF and the SDRF file are important. 
+The IDF file contains top level information
+about the experiment including title, description, submitter contact details and
+protocols. The SDRF file contains essential information on the experimental 
+samples, e.g. the experimental group(s) they belong to. 
+
+# Download the raw data and the annotation data 
+
+With the code below, we download the raw data from
+[ArrayExpress](https://www.ebi.ac.uk/arrayexpress/) [@Kolesnikov_2014].
+It is saved in the directory **raw\_data\_dir** which defaults to the subdirectory
+`rawDataMAWorkflow` of  the current working directory. The names 
+of the downloaded files are returned as a list.
+
+```{r getDataEBI, eval=TRUE, results='hide', message=FALSE}
+if(!dir.exists(raw_data_dir)){
+    dir.create(raw_data_dir)
+}
+
+anno_AE <- getAE("E-MTAB-2967", path=raw_data_dir, type="raw")
+```
+
+We now import the SDRF file directly from ArrayExpress
+in order to obtain the sample annotation.
+
+The raw data consists of one CEL file per sample (see below) and
+we use the CEL file names as row names for the imported data. 
+These names are given in a column
+named `Array.Data.File` in the SDRF table. We turn the SDRF table into an
+` AnnotatedDataFrame ` from the `r Biocpkg("Biobase") ` package that we
+will need later to create an `ExpressionSet` for our data [@Bioc].
+
+
+```{r getSDRF}
+SDRF <- read.delim(
+url("http://www.ebi.ac.uk/arrayexpress/files/E-MTAB-2967/E-MTAB-2967.sdrf.txt"))
+
+rownames(SDRF) <- SDRF$Array.Data.File
+SDRF <- AnnotatedDataFrame(SDRF)
+```
+
+
+Before we move on to the actual raw data import, we will briefly introduce the
+` ExpressionSet ` class contained in the `r Biocpkg("Biobase")` package.
+It is commonly used to store microarray data in Bioconductor.
+
+## Bioconductor ExpressionSets
+
+Genomic data can be very complex,
+usually consisting of a number of different bits and pieces, e.g. information
+on the experimental samples, annotation of genomic features measured as well
+as the experimental data itself
+In Bioconductor the approach is taken that these  pieces should be stored in
+a single structure to easily manage the data.
+
+The package `r Biocpkg("Biobase")` contains standardized data structures
+to represent genomic data. The `ExpressionSet` class is designed
+to combine several different sources of information (i.e. as contained in the 
+various MAGE--TAB files) into a single convenient
+structure. An ExpressionSet can be manipulated (e.g., subsetted, copied),
+and is the input to or output of many Bioconductor functions.
+
+The data in an ExpressionSet consist of
+
++ **assayData**: Expression data from microarray experiments.
+
++ **metaData**: A description of the samples in the experiment
+(phenoData), metadata about the features on the chip or technology used for the
+experiment (featureData), and further annotations for the features, for example
+gene annotations from biomedical databases (annotation).
+
++ **experimentData**: A flexible structure to describe the experiment.
+
+The ExpressionSet class coordinates all of these data, so that one does not 
+have to worry about the details. However, some constrains have to be met. 
+In particular, the rownames of the `phenoData` (which holds the content of the
+SDRF file) have to match the column names of the assay data (as they represent the sample 
+identifiers), while the row names of the expression data have to match the 
+row names of the `featureData` (as they represent the feature identifiers). This is 
+illustrated in the figure.
+
+```{r sumexp, echo=FALSE, fig.show="asis"}
+par(mar=c(0,0,0,0))
+plot(1,1,xlim=c(0,100),ylim=c(0,100),bty="n",
+     type="n",xlab="",ylab="",xaxt="n",yaxt="n")
+polygon(c(45,80,80,45),c(10,10,70,70),col=rgb(1,0,0,.5),border=NA)
+polygon(c(45,80,80,45),c(68,68,70,70),col=rgb(1,0,0,.5),border=NA)
+text(62.5,40,"assay(s)", cex = 1)
+text(62.5,30,"e.g. 'exprs'", cex = 1)
+polygon(c(20,40,40,20),c(10,10,70,70),col=rgb(0,0,1,.5),border=NA)
+polygon(c(20,40,40,20),c(68,68,70,70),col=rgb(0,0,1,.5),border=NA)
+text(30,40,"featureData", cex = 1)
+polygon(c(45,80,80,45),c(75,75,90,90),col=rgb(.5,0,.5,.5),border=NA)
+polygon(c(45,47,47,45),c(75,75,90,90),col=rgb(.5,0,.5,.5),border=NA)
+text(62.5,82.5,"phenoData", cex = 1)
+```
+
+You can use the functions ` pData ` and ` fData ` to extract
+the sample and feature annotation respectively from an ` ExpressionSet `.
+The function ` exprs ` will return the expression data itself as a matrix.
+
+## Import of the raw microarray data 
+
+The analysis of Affymetrix arrays starts with CEL files. These are the result
+of the processing of the raw image files using the Affymetrix software and contain
+estimated probe intensity values. Each CEL file additionally contains some 
+metadata, such as a chip identifier. 
+
+The function ` read.celfiles `
+from the `r Biocpkg("oligo") ` [@oligo] can be
+used to import the files. The package automatically uses
+`r  Biocannopkg("pd.hugene.1.0.st.v1") ` as the chip annotation package as the 
+chip--type is also stored in the .CEL files.
+
+We specify our `AnnotatedDataFrame` created earlier as `phenoData`. Thus, We have 
+to be sure that we import the CEL files in the order that corresponds to the SDRF
+table --- to enforce this, we use the column `Array.Data.File` of the `SDRF` table as the `filenames` 
+argument.
+
+Finally, we check whether the object created is valid. (e.g. sample names 
+match between the different tables).
+
+We collect the information about 
+the CEL files and import and them into the  variable `raw_data`:
+
+
+```{r importCelfiles, results="hide", eval=TRUE, dependson="getSDRF", warning = FALSE }
+raw_data <- read.celfiles(filenames = file.path(raw_data_dir, 
+                                                SDRF$Array.Data.File),
+                         verbose = FALSE, phenoData = SDRF)
+validObject(raw_data)
+```
+
+We now inspect the raw data a bit and retain only those columns that are 
+related to the experimental factors of interest (identifiers of the individuals, 
+disease of the individual and the mucosa type).
+
+```{r inspectPhenoData, eval=TRUE }
+head(Biobase::pData(raw_data))
+head(exprs(raw_data))
+stopifnot(validObject(raw_data))
+
+Biobase::pData(raw_data) <- Biobase::pData(raw_data)[, c("Source.Name",
+                                     "Characteristics.individual.",
+                                     "Factor.Value.disease.",
+                                     "Factor.Value.phenotype.")]
+```
+
+
+## Quality control of the raw data
+
+The first step after the intial data import is the quality control of the data.
+Here we check for outliers and try to see whether the data clusters as expected, 
+e.g. by the experimental conditions. We use the identifiers of the individuals
+as plotting symbols.
+
+```{r quality_control_raw_data}
+exp_raw <- log2(exprs(raw_data))
+PCA_raw <- prcomp(t(exp_raw), scale = FALSE)
+
+dataGG <- data.frame(PC1 = PCA_raw$x[,1], PC2 = PCA_raw$x[,2],
+                    Disease = Biobase::pData(raw_data)$Factor.Value.disease.,
+                    Phenotype = Biobase::pData(raw_data)$Factor.Value.phenotype.,
+                    Individual = Biobase::pData(raw_data)$Characteristics.individual.)
+        
+(qplot(PC1, PC2, data = dataGG, color =  Disease,
+       main = "PCA plot of the raw data (log-transformed)", size = I(2), 
+       asp = 1.0, geom = "text",
+       label = Individual)
+     + scale_colour_brewer(palette = "Set2"))
+
+boxplot(raw_data, target = "core", 
+        main = "Boxplots of log2-intensities for the raw data")
+```
+
+The PCA (performed on the log--intensity scale) plot of the raw data shows 
+that the first principal component differentiates  between the diseases. 
+However, the intensity boxplots  show that the  intensity distributions 
+of the individual arrays are quite different,
+indicating the need of an appropriate normalization, which we will discuss next.
+
+A wide range of quality control plots can be created using the package 
+`r Biocpkg("arrayQualityMetrics") ` [@AQM]. The package  produces an html report, 
+containing the quality control plots together with a description of their
+aims and an identification of possible outliers. We don't discuss this tool in detail
+here, but the code below can be used to create a report for our raw data. 
+
+```{r arrayQualityMetricsRaw, eval = FALSE}
+arrayQualityMetrics(expressionset = raw_data,
+    outdir = "Report_for_Palmieri_raw",
+    force = TRUE, do.logtransform = TRUE,
+    intgroup = c("Factor.Value.disease.", "Factor.Value.phenotype."))
+```
+
+# Background adjustment, calibration, summarization and annotation
+
+## Background adjustment
+
+After the initial import and quality assessment, the next step in processing of
+microarray data is background adjustment. This  is essential because a part of the
+measured probe intensities are due to non-specific hybridization and the noise 
+in the optical detection system. Therefore, observed intensities need to be adjusted to 
+give accurate measurements of specific hybridization.
+
+## Across--array normalization (calibration)
+
+Without proper normalization across arrays, it is impossible to compare measurements from
+different array hybridizations due to many obscuring sources of variation.
+These include different efficiencies of
+reverse transcription, labeling or hybridization
+reactions, physical problems with the arrays, reagent batch effects, and laboratory
+conditions. 
+
+## Summarization
+
+After normalization, summarization is needed because on the Affymetrix 
+platform transcripts are represented
+by multiple probes. For each gene, the background adjusted and normalized intensities
+need to be summarized into one quantity that estimates an amount proportional to
+the amount of RNA transcript.
+
+After the summarization step, the summarized data can be annotated with various
+information, e.g. gene symbols and EMSEMBL gene identifiers. There is an
+annotation database available from Bioconductor 
+for our platform, namely the package
+`r Biocannopkg("hugene10sttranscriptcluster.db") `.
+
+You can view its content like this
+
+```{r annotation data base content, eval = TRUE}
+head(ls("package:hugene10sttranscriptcluster.db"))
+```
+
+Additional information is available from the reference manual of the package.
+Essentially, the package provides a mapping from the transcript cluster 
+identifiers to the various annotation data.
+
+## Old and new "probesets" of  Affymetrix microarrays
+
+Traditionally, Affymetrix arrays (the so--called 3' IVT arrays)
+were probeset based: a certain fixed group of probes were part of a probeset
+which represented a certain gene or transcript (note however, that a
+gene can be represented by multiple probesets).
+
+The more recent "Gene" and "Exon" Affymetrix arrays are exon based and hence there 
+are two levels of summarization. The exon level summarization 
+leads to "probeset" summary. However,
+these probesets are not the same as the  probesets of the previous
+chips, which usually represented a gene/transcript. Furthermore, there
+are also no longer designated match/mismatch probes present on "Gene" type chips.
+
+For the newer Affymetrix chips a gene/transcript level summary is given 
+by "transcriptct clusters". Hence the appropriate annotation package is called
+`r Biocpkg("hugene10sttranscriptcluster.db") `.
+
+To complicate things even a bit more, note that the "Gene"  arrays  were created
+as affordable versions of the "Exon" arrays by taking the "good"  probes from the Exon
+array. So the notion of a probeset is based on the
+original construction of the probesets on the Exon array, which contains
+usually at least four probes.
+
+But since Affymetrix selected only a the subset of "good" probes for the 
+Gene arrays, a lot of the probesets on the "Gene" arrays are made up of three 
+or fewer probes. Thus, a summarization on the probeset / exon level 
+is not recommended for "Gene" arrays but nonetheless possible by using the 
+`r Biocannopkg("hugene10stprobeset.db") ` annotation package.
+
+## One--go preprocessing in oligo
+
+The package `r Biocpkg("oligo") ` allows us to perform background correction, 
+normalization and summarization in one single step using a deconvolution 
+method for background correction, quantile normalization and
+the RMA (robust multichip average) algorithm for summarization.
+
+This series of steps as a whole is commonly referred to as RMA algorithm,
+although strictly speaking RMA is merely a summarization method
+[@Irizarry_2003; @Bolstad_2003; @Irizarry_2003a].
+
+```{r RMAcalibration, eval=TRUE}
+palmieri_eset <- oligo::rma(raw_data, target="core")
+```
+
+The parameter `target` defines the degree of summarization, the
+default option of which is "core", using transcript clusters containing
+"safely" annotated genes. Other options for `target` include "extended"
+and "full". For summarization on the exon level (not recommended for Gene
+arrays), one can use "probeset" as the target option.
+
+Although other methods for background correction and normalization exist,
+RMA is usually a good default choice.
+RMA shares information across arrays and
+uses the versatile quantile normalization method  that
+will make the array intensity distributions match. However, it is preferable 
+to apply it only after outliers have been removed. 
+The quantile normalization algorithm used by RMA
+works by replacing values by the average of identically
+ranked (with a single chip) values across arrays. A more detailed 
+description can be found on the [Wikipedia page](https://en.wikipedia.org/wiki/Quantile_normalization) 
+about it.
+
+An alternative to quantile normalization is the `r Biocpkg("vsn") ` algorithm,
+that performs background correction and normalization by robustly
+shifting and scaling log--scale intensity values within arrays [@vsn]. This is
+less "severe" than quantile normalization. 
+
+## Some mathematical background on normalization (calibration) and background correction
+
+A generic model for the value of the intensity \(Y\) of a single probe on
+a microarray is given by
+
+$$
+    Y = B + \alpha \cdot S
+$$
+    
+where B is a random quantity due to background noise, usually composed of
+optical effects and non-specific binding, \(\alpha\) is a gain factor, and \(S\)
+is the amount of measured specific binding. The signal \(S\) is considered a
+random variable as well and accounts for measurement error and probe effects.
+The measurement error is typically assumed to be multiplicative so we can write:
+
+$$
+    \log(S) = \theta + \varphi + \varepsilon
+$$
+    
+Here \(\theta\) represents the logarithm of the true abundance,
+\(\varphi\) is a probe-specific effect, and $\varepsilon$ accounts for the 
+nonspecific error.
+This is the additive--multiplicative--error model for microarray data used by RMA
+and also the `r Biocpkg("vsn") ` algorithm [@vsn]. The algorithms differ 
+in the way \(B\) is removed and an estimate of \(\theta\) is obtained.
+
+
+## Quality assessment of the calibrated data
+
+We now produce a clustering and another PCA plot using the calibrated data. In 
+order to display a heatmap of the sample--to--sample distances, we first compute the distances using
+the `dist` function. We need to transpose the expression values since
+the function computes the distances between the rows (i.e. genes in our case) by
+default. The default distance  is the Euclidean one. However this can  be
+changed and we choose the manhatten distance here (it uses absolute instead of
+squared distances). We set the diagonal of the distance matrix to ` NA ` in order 
+to increase the contrast of the color coding. Those diagonal entries do 
+not contain information since the distance of a sample to itself is
+always equal to zero.
+
+
+
+```{r PCAMetricsCalibrated, eval = TRUE }
+exp_palmieri <- exprs(palmieri_eset)
+PCA <- prcomp(t(exp_palmieri), scale = FALSE)
+
+dataGG <- data.frame(PC1 = PCA$x[,1], PC2 = PCA$x[,2],
+                    Disease = Biobase::pData(palmieri_eset)$Factor.Value.disease.,
+                    Phenotype = Biobase::pData(palmieri_eset)$Factor.Value.phenotype.)
+        
+(qplot(PC1, PC2, data = dataGG, color =  Disease, shape =  Phenotype,
+       main = "PCA plot of the calibrated data", size = I(2), asp = 1.0)
+       + scale_colour_brewer(palette = "Set2"))
+```
+```{r PCAMetricsCalibrated_2, fig.height = 8.5, eval = TRUE }
+dists <- as.matrix(dist(t(exp_palmieri), method = "manhattan"))
+colnames(dists) <- NULL
+diag(dists) <- NA
+rownames(dists) <-  Biobase::pData(palmieri_eset)$Factor.Value.phenotype.
+hmcol <- colorRampPalette(rev(brewer.pal(9, "PuOr")))(255)
+
+pheatmap(dists, col = rev(hmcol), clustering_distance_rows = "manhattan",
+                                 clustering_distance_cols = "manhattan")
+```
+
+The second PC roughly separates Crohn's disease from ulcerative colitis, while the first 
+separates the tissues. This is what we expect: the samples cluster by
+their experimental conditions.
+On the heatmap plot we also see that the samples do not cluster strongly by tissue, confirming 
+the impression from the PCA plot that the separation
+between the tissues is not perfect. The stripe in the heatmap might correspond
+to outlier that could potentially remove.  The `r Biocpkg("arrayQualityMetrics") `
+package produces reports that compute several metrics that can be used for outlier 
+removal.
+
+
+## Filtering based on intensity 
+
+We now filter out lowly expressed genes. Microarray data commonly show a large number
+of probes in the background intensity range. They also do not change much across arrays. 
+Hence they combine a low variance with a low intensity. Thus, they could end up being detected 
+as differentially expressed although they are barely above the "detection" limit 
+and are not very informative in general. We will perform
+a "soft" intensity based filtering here, since this is recommended by `r Biocpkg("limma")`'s 
+[@limma; @Smyth_2004] user guide (a package we will use below for the differential 
+expression analysis). However, note that 
+a variance based filter might exclude a similar
+set of probes in practice. In the histogram of the gene--wise medians, we 
+can clearly see an enrichment of low medians on the left hand side. 
+These represent the genes we want to filter. 
+
+In order to infer a cutoff from the data, we inspect the histogram of the median--intensities.
+We visually fit a central normal distribution given by \(0.5 \cdot N(5.1, 1.18)\) 
+to the probe--wise medians, which represents their typical behavior in the data set at hand.
+
+Then we use the 5% quantile of this distribution as a threshold,  We keep
+only those genes that show an expression higher than the threshold in at least
+as many arrays as in  the smallest experimental group.
+
+```{r expGroups, dependson="PCAMetricsCalibrated"}
+no_of_samples <- table(paste0(Biobase::pData(palmieri_eset)$Factor.Value.disease., "_", 
+                        Biobase::pData(palmieri_eset)$Factor.Value.phenotype.))
+no_of_samples 
+```
+
+In our case this would be `r min(no_of_samples)`.
+
+
+```{r intensityBasedFiltering, fig.width=10, fig.height=6, eval=TRUE}
+palmieri_medians <- rowMedians(exprs(palmieri_eset))
+
+hist_res <- hist(palmieri_medians, 100, col="#e7efd8", freq = FALSE, 
+            main = "Histogram of the median intensities", 
+            xlab = "Median intensities")
+
+emp_mu <- hist_res$breaks[which.max(hist_res$density)]
+emp_sd <- mad(palmieri_medians)/2
+prop_cental <- 0.50
+
+lines(sort(palmieri_medians), prop_cental*dnorm(sort(palmieri_medians),
+                              mean = emp_mu , sd = emp_sd),
+                              col = "grey10", lwd = 4)
+
+cut_val <- 0.05 / prop_cental
+thresh_median <- qnorm(0.05 / prop_cental, emp_mu, emp_sd)
+
+samples_cutoff <- min(no_of_samples)
+
+idx_thresh_median <- apply(exprs(palmieri_eset), 1, function(x){
+                                sum(x > thresh_median) >= samples_cutoff})
+table(idx_thresh_median)
+
+palmieri_filtered <- subset(palmieri_eset, idx_thresh_median)
+```
+
+
+## Annotation of the transcript clusters
+
+Before we continue with the linear models for microarrays and differential
+expression  we  describe how to add "feature Data", i.e. annotation
+information to the transcript cluster identifiers stored in the featureData of
+our ExpressionSet. We use the function `select`
+from `r Biocpkg("AnnotationDbi") ` to query the gene symbols and associated
+short descriptions for the transcript clusters. For each cluster, we add the 
+gene symbol and a short description of the gene the cluster represents. 
+
+
+```{r annotateData, eval=TRUE, dependson="intensityBasedFiltering", message = FALSE}
+anno_palmieri  <- AnnotationDbi::select(hugene10sttranscriptcluster.db,
+                                  keys=(featureNames(palmieri_filtered)),
+                                  columns = c("SYMBOL", "GENENAME"),
+                                  keytype="PROBEID")
+
+```
+
+## Removing multiple mappings and building custom annotations
+
+Many transcript--cluster identifiers will map to multiple gene symbols.
+We compute a summary table in the code below to see how many there are.
+
+```{r multipleMappings, dependson="annotateData"}
+probe_stats <- anno_palmieri   %>%
+    group_by(PROBEID) %>%
+    summarize(no_of_matches = n_distinct(SYMBOL)) %>%
+    filter(no_of_matches > 1)
+
+probe_stats
+
+dim(probe_stats)
+```
+
+We have  over 2000 transcript--clusters that map to multiple gene symbols.
+It is difficult to decide which mapping is "correct". Therefore,
+we exclude these transcript--clusters. Additionally, we also exclude
+transcript--clusters that do not map to gene symbols.
+
+
+```{r excludeMultipleMappings, dependson="multipleMappings", cache=TRUE}
+ids_to_exlude <- ((featureNames(palmieri_filtered) %in% probe_stats$PROBEID) |
+               featureNames(palmieri_filtered)  %in% subset(anno_palmieri ,
+                                                           is.na(SYMBOL))$PROBEID)
+table(ids_to_exlude)
+
+palmieri_final <- subset(palmieri_filtered, !ids_to_exlude)
+
+validObject(palmieri_final)
+
+fData(palmieri_final)$PROBEID <- rownames(fData(palmieri_final))
+fData(palmieri_final) <- left_join(fData(palmieri_final), anno_palmieri)
+
+# restore rownames after left_join
+rownames(fData(palmieri_final)) <-fData(palmieri_final)$PROBEID 
+    
+validObject(palmieri_final)
+```
+
+Alternatively, one can re--map the probes of the array
+to a current annotation, a workflow to do this for Illumina arrays is given in
+@Arloth_2015.
+Essentially, the individual probe sequences are re--aligned to an in--silico
+"exome" that consists of all annotated transcript exons.
+
+In any case, the package `r Biocpkg("pdInfoBuilder") ` can be used to build custom
+annotation packages for use with `r Biocpkg("oligo") `. In order to do this,
+PGF / CLF files  (called "Library files" on the Affymetrix website) as well
+as the probeset annotations are required. The probesets typically represent
+a small stretches of the genome (such as a single exon) and multiple probesets
+are then used to form a transcript cluster.
+
+The CLF file contains information about the location of
+individual probes on the array. The PGF file then contains the individual probe
+sequences and shows the probeset they belong to. Finally, The probeset annotation .csv
+then contains information about which probesets are used
+in which transcript cluster. Commonly, multiple probesets are used in one
+transcript cluster and some probesets are contained in multiple transcript
+clusters.
+
+
+# A short overview of linear models
+
+I am afraid this section is rather technical. However general experience shows that
+most questions on the  Bioconductor support site about packages using using linear models
+like `r Biocpkg("limma") ` [@limma],  `r Biocpkg("DESeq2")` [@Love_2014] and 
+`r Biocpkg("edgeR") ` [@Robinson_2009] are actually
+not so much about the packages themselves but rather about the underlying linear
+models. It might also be helpful to learn a bit of linear algebra to understand
+the concepts better. The Khan Academy [offers nice (and free) online courses](https://www.khanacademy.org/math/linear-algebra).
+Mike Love's and Michael Irizzary's [genomics class](http://genomicsclass.github.io/book/)
+is also a very good resource, especially its section on [interactions and contrasts](http://genomicsclass.github.io/book/pages/interactions_and_contrasts.html).
+
+## Regression models 
+
+In regression models we use one variable to explain or predict the other. It is
+customary to plot the predictor variable on the x--axis and the predicted variable on
+the y--axis.
+The predictor is also called the independent variable, the explanatory variable, the
+covariate, or simply \(x\). The predicted variable is called the dependent variable, or
+simply \(y\).
+
+In a regression problem the data are pairs \((x_i , y_i)\) for \(i = 1, \dotsc , n\).
+For each \(i, y_i\) is a random variable whose distribution depends on \(x_i\). We write
+
+$$
+y_i = g(x_i) + \varepsilon_i .
+$$
+
+The above  expresses \(y_i\) as a systematic or explainable part \(g(x_i)\) and an unexplained part
+$\varepsilon_i$. Or more informally: response = signal + noise.
+$g$ is called the regression function. 
+Once we have an estimate \(\hat g\) of \(g\), we can compute \(r_i := y_i - g(x_i)\).
+The \(r_i\)'s are called residuals.
+The \(\varepsilon_i\)'s themselves are called errors.
+
+Residuals are used to evaluate and assess the fit of models for g. Usually one 
+makes distributional assumption about them, e.g. that they are independent and 
+identically normally distributed with identical variance
+\(\sigma^2\) and mean zero:
+
+$$
+r_i \sim N(0, \sigma^2)
+$$
+
+This allows to derive statistical tests for model coefficients.
+
+## Linear regression models
+
+Linear regression is a special case of the general regression model. Here,
+we combine the predictors linearly to produce a prediction. If we have only
+single predictor \(x\), the simple linear regression model is:
+
+$$
+y_i = \beta_0 +  \beta_1 x_{i} + \varepsilon_i; \quad
+ \varepsilon_i \sim N(0, \sigma);
+$$
+
+We can of course always add more predictors, let their total number be denoted by
+\(p\). Then we get a multiple linear regression:
+
+$$
+y_i= \beta_0 + \sum_{j=1}^p \beta_j x_{i} + \varepsilon_i; \quad  j=1,...,p
+$$
+
+The equation for a multiple linear regression model can also be written in matrix
+form (we will denote matrices and vectors in bold font).
+
+$$
+\mathbf{Y}_{n \times 1} =  \mathbf{X}_{n \times (p+1)}  \mathbf{\beta}_{(p+1) \times 1} + \mathbf{\varepsilon}_{n \times 1}
+$$
+
+With \(\mathbf{X}\) being the so called **design matrix**:
+
+$$
+\mathbf{X}:=  \bigl(\mathbb{1}_n, X_1, \dotsc, X_p\bigr)
+$$
+
+\(\mathbb{1}_n\) is a column vector of ones called the **intercept** and 
+\(\mathbf{X}_p = (x_{p1}, \dotsc, x_{pn})^T\)
+is a column vector of measurements for covariate $p$. The regression
+coefficients are commonly estimated by
+the method of ``ordinary least squares" (OLS):
+
+$$
+\text{OLS:}  \bigl|\bigl| Y - \beta_0 - \sum_{j=1}^p \beta_j X_{j} \bigl|\bigl|_E \rightarrow \min!
+$$
+
+leading to the estimate of the coefficient vector
+
+$$
+\hat \beta = (\mathbf{X}^T \mathbf{X})^{-1} \mathbf{X}^TY
+$$
+
+
+## Creating design matrices in R
+
+To get an idea of what design matrices look like, we consider several examples.
+It is important to know some fundamentals
+about design matrices in order to be able to correctly transfer a design of a
+particular study to an appropriate linear model.
+
+We will use the  base R functions:
+
+*   ` formula `
+*   ` model.matrix `
+
+... in order to produce design matrices for a variety of linear models. R uses the formula
+interface to create design matrices automatically. In the first example, we have
+two groups of two samples each. Using `formula`  and  `model.matrix`
+we will create  a model matrix with so called treatment contrast parameterization (the
+default setting in R). This means
+that an intercept is included in the model, i.e. \(X_0 = \mathbb{1}_n\)
+and \(X_1\) is equal to 1 if the samples belongs to group two and zero otherwise
+as we can see in the following code chunk.
+
+
+```{r simple treatment contrast}
+two_groups <- factor(c(1, 1 ,2, 2))
+f <- formula(~ two_groups)
+model.matrix(f)
+```
+
+This design is called treatment contrast parameterization for an obvious reason:
+the first column of the design matrix represents a "base level", i.e the  mean \(\beta_0\)
+for group one and  the second column, corresponding to \(\beta_1\),
+represents the difference between
+the group means since all group two samples have means represented by \(\beta_0 + \beta_1\). 
+As \(\beta_0\)  is the mean of group 1, \(\beta_1\) corresponds to the difference
+of the means of group two and group one and thus shows the effect of a "treatment".
+
+However, this design is not orthogonal, i.e. the columns of the design matrix
+are not independent. We can construct an equivalent
+orthogonal design as follows:
+
+```{r simple orthogonal contrast}
+gr1 <- ifelse(two_groups == 1, 1, 0)
+gr2 <- ifelse(two_groups == 2, 1, 0)
+orth_model <- model.matrix(~ 0 + gr1 + gr2)
+```
+
+Here, we loose the nice direct interpretability of the coefficients. Now
+\(\beta_1\) is simply the mean of the second group. We will discuss the extraction
+of interesting contrasts (i.e. linear combinations of coefficients) from a model 
+like this below.
+
+We explicitly excluded the intercept by specifying it as zero.
+Commonly it makes sense to include an intercept in the model, especially
+in more complex models. We can specify a more complex design pretty easily: 
+if we have two independent
+factors, the base mean now corresponds to the first levels of the two factors.
+
+```{r  basic complex design}
+x <- factor(c(1, 1, 1, 1, 2, 2, 2, 2))
+y <- factor(c("a", "a", "b", "b", "a", "a", "b", "b"))
+two_factors <- model.matrix(~ x + y)
+two_factors
+```
+
+The "drop one" strategy is the default method for creating regression coefficients
+from factors in R. If a factor has \(d\) levels, adding it to the model will give
+you \(d-1\) regression coefficients corresponding to  \(d-1\) columns in a design
+matrix.
+Apart from excluding the intercept, you can also use the `I` function
+to treat a covariate as it is without using the formula syntax.
+The code below includes \(z^2\) as a covariate.
+
+```{r other design related features}
+z <- 1:4
+model.matrix(~ z)
+model.matrix(~ 0 + z)
+model.matrix(~ z + I(z^2))
+```
+
+## Singular model matrices
+
+Whatever your model matrix looks like, you should make sure that it is
+non--singular. Singularity means that the measured variables
+are linearly dependent and leads to  regression coefficients that are not 
+uniquely defined. In linear algebra terms, we say that
+the matrix does not have full rank, which for design matrices means that
+the actual dimension of the space spanned by the column vectors is in fact lower
+than the apparent one. This leads to a redundancy in the model matrix, since
+some columns can be represent by linear combinations of other columns.
+
+For design matrices, which contain factors, this  happens if two conditions 
+are confounded, e.g. in one experimental
+group there are only females and in the other group there are only males.
+Then the effect of sex and experimental group cannot be disentangled.
+
+Let's look at an example. We set three factors, of which the
+third one is nested with the first two. We can check the singularity of
+the model matrix by computing its so called singular value decomposition and check
+it's minimal singular value. If this is zero, the matrix is singular.
+As we can see, this is indeed the case here.
+
+```{r singular model matrix}
+x <- factor(c(1, 1, 1, 1, 2, 2, 2, 2))
+y <- factor(c("a", "a", "b", "b", "a", "a", "b", "b"))
+z <- factor(c("m", "m", "m", "m", "k", "k", "l", "l"))
+sing_model <- model.matrix(~ x+y+z)
+sing_model
+round(min(svd(sing_model)$d))
+```
+
+
+We have one column in the design matrix that can be represented by
+a linear combination of the other columns, thus the column space has actually
+a lower dimension than the apparent one. For example, we can represent column
+5 ("zm") by a linear combination of the first two columns "intercept" and "x2":
+
+```{r singular model matrix lm}
+comb_coefs  <- coef(lm(sing_model[, 5] ~ 0 + sing_model[, -5]))
+comb_coefs <-  ifelse(is.na(comb_coefs), 0L, comb_coefs)
+comb_coefs
+round(sum(sing_model[,-5] %*% comb_coefs - sing_model[,5]))
+```
+
+I.e., in mathematical notation this means
+$$
+    \begin{pmatrix}
+        1\\1\\1\\1\\0\\0\\0\\0
+    \end{pmatrix}
+    = 1\cdot 
+    \begin{pmatrix}
+        1\\1\\1\\1\\1\\1\\1\\1 
+    \end{pmatrix}
+    -1\cdot 
+    \begin{pmatrix}
+        0\\0\\0\\0\\1\\1\\1\\1
+    \end{pmatrix}
+$$
+
+Thus, the corresponding regression coefficients are not uniquely determined
+and the model does not make much sense. Therefore, the non--singularity 
+of the model matrix should
+always be checked beforehand.
+
+## Using contrasts to test hypotheses  in linear regression 
+
+In differential expression analysis, our most important covariates will
+be factors that differentiate between two or more experimental groups, e.g. the
+covariate \(X_p = (\mathbf{x}_{p1}, \dotsc, \mathbf{x}_{pn})\) is either zero or one
+depending on which group the sample belongs to.
+
+We will illustrate this concept using a small data set called `toycars `
+from the `r CRANpkg("DAAG") ` package.
+The data set `toycars` gives  the distance traveled by one of
+three different toy cars on a smooth surface, starting from rest at
+the top of a 16 inch long ramp tilted at varying angles. We have the
+variables:
+
+* `angle`: Angle
+
+* `distance`: Traveled distance
+
+* `car`: Car number (1, 2 or 3)
+
+We transform car into a factor so that R performs the necessary parameterization
+of the contrasts automatically.
+
+```{r toycars_boxplot }
+toycars$car <-  as.factor(toycars$car)
+qplot(car, distance, data = toycars, geom="boxplot") + geom_point()
+```
+
+By looking at the box plots of distance by car, we can clearly see differences
+between the three types of cars. We can now fit a linear model with
+distance as the dependent variable and car and angle as the predictors. As we
+can see from the linear model output, the treatment contrast parameterization
+was used, with car 1 being the base level.
+
+```{r toycars_linear_model }
+lm_car <- lm(distance ~ angle + car, data = toycars)
+summary(lm_car)
+```
+
+
+## Testing general linear hypotheses
+
+The estimated coefficients now give us the difference between the distance
+traveled between car 1 and car 2 (0.11) and car 1 and car 3 (-0.08), and the associated
+t--tests of these coefficients. However we cannot see a test of car 2 vs. car 3.
+This contrast test would correspond to testing the difference between
+the car 2 and car 3 regression coefficients.
+
+Thus, contrasts of interest to us may not readily correspond to coefficients
+in a fitted linear model. However, one can easily test general linear hypotheses
+of the coefficients of the form:
+
+$$
+    H_0: \mathbf{C}_{ q \times (p+1) } \mathbf{\beta}_{ (p+1) \times 1 } = \mathbf{\alpha}_{ q \times 1 }
+$$
+
+Where \(\mathbf{C}\) is the contrast matrix containing the between group differences
+of interest, \(q\) is the total number of comparisons to be performed and
+\(\mathbf{\alpha}\) contains the difference to be tested, this is usually a vector
+of zeros. If one tests multiple coefficients at once (e.g. \(\beta_1 = 0\) and
+\(\beta_2 = 0\) ) the corresponding test statistic is \(F\)--distributed. If one 
+just tests linear combinations of coefficients, e.g.
+\(\beta_1 - \beta_2 = 0\), \(\beta_1 - \beta_2 - 2\beta_3 = 0\) or something 
+similar the test statistic
+has t--distribution. The function `summary` for `lm` reports the results of
+\(\beta_1 = \beta_2 = \dotso = \beta_p = 0\) (F--test) and the t--tests of $\beta_j = 0$
+each of the coefficients.
+
+Note that the model does not actually have to be refitted in order
+to test the contrasts. This makes contrast matrix based testing
+more efficient and convenient than reformulating the model
+using a new paramerization of the factors to obtain the desired tests.
+We can use the function `glht` from the `r CRANpkg("multcomp") ` package
+to test these general linear hypotheses [@mult]. Let us assume we want all pairwise
+comparisons between the cars, this can be achieved by defining a specific contrast
+matrix for our current model as given below.
+
+There are three such comparisons  and we can print
+the results by using the `summary` function. As we can see the estimates
+for the contrasts already contained in the original model agree with the obtained
+results from contrast fit.
+
+```{r toycars contrast test }
+C <- rbind(c(0, 0 , 1 ,0), c(0 , 0 , 0 , 1), c(0, 0 , 1, -1))
+colnames(C) <- rownames(summary(lm_car)$coefficients)
+rownames(C) <- c("car2 - car1", "car3 - car1" , "car2 - car3")
+C
+summary(glht(lm_car, C), test = adjusted(type ="none"))
+```
+
+
+Note that the term "contrast" is  used in the context of (re)parameterization
+of the original model (as in "treatment contrasts") and in the testing of
+linear hypotheses about the model coefficients. This can lead to some confusion,
+however usually it should be clear from the context whether a reparameterization
+or test of linear hypotheses is intended.
+
+We can also fit a linear model without an intercept
+to the toycars data set. Now, the coefficients derived from the "car" factor 
+represent car--wise means. Thus, the contrasts we have to form change, 
+however, the results for the group comparisons do not. 
+
+```{r toycars_no_inter}
+toycars$car <- as.factor(toycars$car)
+lm_car_no_I <- lm(distance~0 + angle + car, data = toycars)
+summary(lm_car_no_I)
+
+C_no_I <-  rbind(c(0, -1, 1, 0), c(0, -1, 0, 1), c(0, 0,  1, -1) )
+colnames(C_no_I) <- rownames(summary(lm_car_no_I)$coefficients)
+rownames(C_no_I) <- c("car2 - car1", "car3 - car1" , "car2 - car3" )
+C_no_I
+summary(glht(lm_car_no_I, C_no_I), test = adjusted(type ="none"))
+```
+
+
+# Linear models for microarrays
+
+We now apply linear models to microarrays. Specifically, we discuss
+how to use the `r Biocpkg("limma") ` for differential expression analysis.
+The package is designed to analyze complex experiments involving comparisons between
+many experimental groups simultaneously while remaining reasonably easy to use
+for simple experiments. The main idea is to fit a linear model to the expression 
+data for each gene. Empirical Bayes and other shrinkage methods are used to borrow information
+across genes for the residual variance estimation leading to a "moderated" \(t\)--statistics, 
+and stabilizing the analysis for experiments 
+with just a small number of arrays [@Smyth_2004].
+
+In the following, we use appropriate design and contrast matrices for
+our linear models and fit a linear model to each gene separately.
+
+## A linear model for the data
+
+The original paper is interested in changes in transcription that occur
+between inflamed and adjacent non--inflamed mucosal areas of the colon.
+This is studied in both inflammatory bowel disease types.
+
+Since we have two arrays per individual, the first factor we need
+is a blocking factor for the individuals that will absorb differences between
+them. Then we create a factors that give us the grouping for the diseases and
+the tissue types. We furthermore simplify the names of the
+diseases to UC and DC, respectively. Then, we create two design matrices, 
+one for each of the two diseases
+as we will analyze them separately in order to follow the  analysis 
+strategy of the original paper closely (one could also fit a joint model to 
+the complete data set, however, the two diseases might behave very differently 
+so that a joint fit might not be appropriate).
+
+```{r createDesign, eval=TRUE, dependson="excludeMultipleMappings" }
+individual <- as.character(Biobase::pData(palmieri_final)$Characteristics.individual.)
+
+tissue <- str_replace_all(Biobase::pData(palmieri_final)$Factor.Value.phenotype., " ", "_")
+tissue <- ifelse(tissue == "non-inflamed_colonic_mucosa", "nI", "I")
+
+disease <- str_replace_all(Biobase::pData(palmieri_final)$Factor.Value.disease., " ", "_")
+disease <- ifelse(disease == "Crohn's_disease", "CD", "UC")
+
+
+i <- individual[disease == "CD"]
+design_palmieri_CD <- model.matrix(~ 0  + tissue[disease == "CD"] + i)
+colnames(design_palmieri_CD)[1:2] <- c("I", "nI")
+
+
+i <- individual[disease == "UC"]
+design_palmieri_UC<- model.matrix(~ 0  + tissue[disease == "UC"] + i)
+colnames(design_palmieri_UC)[1:2] <- c("I", "nI")
+
+```
+
+We can inspect the design matrices and test their rank.
+
+```{r inspectDesignMatrix, eval = TRUE, dependson="createDesign"}
+head(design_palmieri_CD[, 1:6])
+dim(design_palmieri_CD)
+min(svd(design_palmieri_CD)$d)
+
+head(design_palmieri_UC[, 1:6])
+dim(design_palmieri_UC)
+min(svd(design_palmieri_UC)$d)
+```
+
+
+## Contrasts and hypotheses tests
+
+We  now fit the linear models and
+define appropriate contrasts to test hypotheses of interest.
+We want to compare the inflamed  to the the non--inflamed tissue.
+Thus, we create a contrast matrix consisting of one row. `r Biocpkg("limma")` 's function
+`makeContrasts` creates this matrix from a synbolic description of the contrast of
+interest. We can fit the linear model, compute the moderated \(t\)--statistics
+by calling the ` eBayes ` function and finally extract the number of
+differentially expressed genes while controlling the FDR by
+requiring BH--corrected p--value below a certain threshold.
+
+```{r createContrastMatrixAndFitModel, eval=TRUE, dependson="createDesign" }
+contrast_matrix_CD <- makeContrasts(I-nI, levels = design_palmieri_CD)
+
+palmieri_fit_CD <- eBayes(contrasts.fit(lmFit(palmieri_final[,disease == "CD"],
+                                design = design_palmieri_CD),
+                                contrast_matrix_CD))
+
+contrast_matrix_UC <- makeContrasts(I-nI, levels = design_palmieri_UC)
+
+palmieri_fit_UC <- eBayes(contrasts.fit(lmFit(palmieri_final[,disease == "UC"],
+                                design = design_palmieri_UC),
+                                contrast_matrix_UC))
+```
+
+## Extracting results
+
+Results can be extracted by use of the `topTable` function. We extract
+the comparisons for both Crohn's disease  as well as ulcerative colitis and
+sort the results by their absolute \(t\)--statistics. As a diagnostic check, we also
+plot the  p--value histogram: We expect a uniform distribution for the
+p--values that correspond to true null hypotheses, while the a peak near zero
+shows a enrichment for low p--values corresponding to differentially expressed (DE)
+genes.  A p--value less than 0.001 was used in the original paper as a significance
+cutoff leading to 298 (CD) and 520 (UC) DE--genes for the two diseases.
+
+We call around 500/1000 genes in the two conditions at the same cutoff, this 
+higher number of DE genes identified is probably
+due to the increased power from the blocking according to the individuals
+and the moderated variance estimation that `r Biocpkg("limma") ` performs.
+
+```{r extractResults, eval = TRUE, dependson="createContrastMatrixAndFitModel", message=FALSE}
+table_CD <-  topTable(palmieri_fit_CD, number = Inf)
+head(table_CD)
+
+table(table_CD$adj.P.Val < 0.05)
+
+table(table_CD$P.Value < 0.001)
+
+hist(table_CD$P.Value, col = brewer.pal(3, name = "Set2")[1],
+     main = "inflammed vs non-imflamed - Crohn's disease", xlab = "p-values")
+
+
+table_UC <-  topTable(palmieri_fit_UC, number = Inf)
+head(table_UC)
+
+table(table_UC$adj.P.Val < 0.05)
+
+table(table_UC$P.Value < 0.001)
+
+hist(table_UC$P.Value, col = brewer.pal(3, name = "Set2")[2],
+     main = "inflammed vs non-imflamed - Ulcerative colitis", xlab = "p-values")
+
+```
+
+
+## Comparison to the paper results
+
+We now compare our list of differentially expressed genes to the results obtained
+in the paper. The paper results can be downloaded as excel files  from
+[http://links.lww.com/IBD/A795](http://links.lww.com/IBD/A795). We save it 
+in an .xlsx file named `palmieri_DE_res.xlsx`. The paper results are  given
+as identified differentially expressed genes
+with a p--value less than 0.001, which corresponds to an FDR of 0.05 in Crohn's
+disease and 0.02 in ulcerative colitis. There are four tables in total giving
+the list of up and downregulated genes in CD and UC respectively.
+In the code below, we extract the gene symbols from the excel table and then
+compare them to the differentially expressed genes we identify at a p--value
+of 0.001.
+
+
+```{r compareDEgenes, dependson="extractResults"}
+palmieri_DE_res <- sapply(1:4, function(i) read.xlsx(cols = 1, 
+                                                     "inst/extdata/palmieri_DE_res.xlsx", 
+                                                     sheet = i, startRow = 4))
+
+names(palmieri_DE_res) <- c("CD_UP", "CD_DOWN", "UC_UP", "UC_DOWN")
+palmieri_DE_res <- lapply(palmieri_DE_res, as.character)
+paper_DE_genes_CD <- Reduce("c", palmieri_DE_res[1:2])
+paper_DE_genes_UC <- Reduce("c", palmieri_DE_res[3:4])
+
+overlap_CD <- length(intersect(subset(table_CD, P.Value < 0.001)$SYMBOL,  
+                               paper_DE_genes_CD)) / length(paper_DE_genes_CD)
+
+
+overlap_UC <- length(intersect(subset(table_UC, P.Value < 0.001)$SYMBOL,
+                               paper_DE_genes_UC)) / length(paper_DE_genes_UC)
+
+overlap_CD
+overlap_UC 
+```
+
+
+We see that we get a moderate overlap of `r overlap_CD` for CD and
+`r overlap_UC` for UC. Note that is recommended to always to choose an
+FDR cutoff instead of a p--value cutoff, since this way you control an
+explicitly defined error rate and the results are easier to interpret and
+to compare. In what follows, we choose an FDR cutoff of 10\%.
+
+
+# Gene ontology (GO) based enrichment analysis
+
+We can now try characterize the identified differentially expressed genes
+a bit better by performing an GO enrichment analysis. Essentially the
+gene ontology ([http://www.geneontology.org/](http://www.geneontology.org/)) is 
+a hierarchically organized
+collection of functional gene sets [@Ashburner_2000, @GO_2015, @du_Plessis_2011]. 
+
+
+## Matching the background set of genes
+
+The function ` genefinder ` from the `r Biocpkg("genefilter") ` [@Bourgon_2010] 
+will be used to find a background set of genes that are similar in expression 
+to the differentially expressed genes. We then check whether 
+the background has roughly the same distribution
+of average expression strength as the foreground.
+
+We do this in order not to select a biased background since the gene set testing
+is performed by a simple Fisher test on a 2x2 table. Note that this approach
+is very similar to commonly used web tools like GOrilla [@Eden_2009]. 
+Here we focus on the  CD subset of the  data.
+
+For every differentially expressed gene, we try to find genes with similar
+expression.
+
+```{r GOAnalysisCreateBackgrounds, eval=TRUE, dependson=c("extractResults", "excludeMultipleMappings"), warning=FALSE, message=FALSE}
+DE_genes_CD <- subset(table_CD, adj.P.Val < 0.1)$PROBEID
+
+back_genes_idx <- genefinder(palmieri_final, as.character(DE_genes_CD), 
+                       method="manhattan", scale="none")
+
+back_genes_idx <- sapply(back_genes_idx, function(x)x$indices)
+
+back_genes <-featureNames(palmieri_final)[back_genes_idx]
+back_genes <- setdiff(back_genes, DE_genes_CD)
+
+    
+intersect(back_genes, DE_genes_CD)
+length(back_genes)
+
+multidensity(list(
+        all=  table_CD[,"AveExpr"] ,
+        fore= table_CD[DE_genes_CD , "AveExpr"],
+        back= table_CD[rownames(table_CD) %in% back_genes, "AveExpr"]),
+        col = c("#e46981", "#ae7ee2", "#a7ad4a"),
+     xlab="mean expression",
+   main = "DE genes for CD - background - matching")
+```
+
+We can see that the matching returned a sensible result and can now
+perform the actual testing. For this purpose we use the `r Biocpkg("topGO") ` which
+implements a nice interface to Fisher testing and also has additional algorithms
+taking the GO structure into account, by e.g. only reporting the most specific
+gene set in the hierarchy [@Alexa_2006].
+
+The GO has three top ontologies, cellular component (CC), biological  processes
+(BP), and molecular function (MF). For illustrative purposes we limit ourselves 
+to the BP category here. 
+
+## Running topGO
+
+We first create a factor `all_genes` which indicates for every gene in
+our background / universe, whether it is differentially expressed or not.
+
+```{r createFactorOfInterestingGenes, dependson="GOAnalysisCreateBackgrounds", eval=TRUE}
+gene_IDs <- rownames(table_CD)
+in_universe <- gene_IDs %in% c(DE_genes_CD ,  back_genes)
+inSelection <-  gene_IDs %in% DE_genes_CD 
+all_genes <- factor(as.integer(inSelection[in_universe]))
+names(all_genes) <- gene_IDs[in_universe]
+```
+
+We now initialize the `r Biocpkg("topGO") ` data set, using the GO annotations 
+contained
+in the annotation data base for the chip we are using. The `nodeSize`
+parameter specifies a minimum size of a GO category we want to use: i.e. here
+categories with less than 10 genes are not included in the testing.
+
+```{r createTopGODataSet, dependson="createFactorOfInterestingGenes", eval=TRUE, message = FALSE }
+ont <- "BP"
+
+top_GO_data <- new("topGOdata", ontology = ont, allGenes = all_genes,
+ nodeSize = 10, annot=annFUN.db, affyLib = "hugene10sttranscriptcluster.db")
+```
+
+Now the tests can be run. `r Biocpkg("topGO") ` offers a wide range of options,
+for details see the paper or the package vignette.
+
+We run two common tests: an ordinary Fisher test for every GO category, and the
+"elim" algorithm, which tries to incorporate the hierarchical structure of the
+GO and tries "decorrelate" it in order to report the most specific significant 
+term in the hierarchy.
+
+The algorithm starts processing the nodes/GO categories
+from the highest (bottommost) level and then iteratively
+moves to nodes from a lower level. If a node is scored as significant,
+all of its genes  are marked as removed in all ancestor nodes.
+This way, the "elim" algorithm aims at finding the most specific node
+for every gene.
+
+The tests uses a 0.01 p--value cutoff by default.
+
+```{r runtopGOTests, results='hide', eval=TRUE, dependson = "createTopGODataSet",  message = FALSE}
+result_top_GO_elim <- runTest(top_GO_data, algorithm = "elim", statistic = "Fisher")
+result_top_GO_classic <- runTest(top_GO_data, algorithm = "classic", statistic = "Fisher")
+```
+
+We can now inspect the results.  We look at the top 100 GO categories according
+to the "Fisher elim" algorithm. The function `GenTable` produces
+a table of significant GO categories, the function `printGenes`
+gives significant genes annotated to them.
+
+```{r processtopGOResults, eval=TRUE, dependson="runtopGOTests"}
+res_top_GO <- GenTable(top_GO_data, Fisher.elim = result_top_GO_elim,
+        Fisher.classic = result_top_GO_classic,
+        orderBy = "Fisher.elim" , topNodes = 100)
+
+genes_top_GO <- printGenes(top_GO_data, whichTerms = res_top_GO$GO.ID,
+    chip = "hugene10sttranscriptcluster.db", geneCutOff = 1000)
+
+res_top_GO$sig_genes <- sapply(genes_top_GO, function(x){
+                str_c(paste0(x[x$'raw p-value' == 2, "Symbol.id"],";"), collapse = "")
+    })
+
+head(res_top_GO[,1:8], 20)
+```
+
+## Visualization of the GO--analysis results
+
+A graph of the results can also be produced. Here we visualize the three most
+significant nodes according to the Fisher elim algorithm in the context of
+the GO hierarchy.
+
+```{r  graph_of_results, fig.height = 6, eval=TRUE, results='hide'}
+showSigOfNodes(top_GO_data, score(result_top_GO_elim), firstSigNodes = 3,
+               useInfo = 'def')
+```
+
+We can see that indeed GO categories related to inflammation, signalling and 
+immune response show up as significant.
+Gene set enrichment analysis has been  a field of very extensive
+research in bioinformatics. For additional approaches see the `r Biocpkg("topGO") `
+vignette and the references therein and also in the [GeneSetEnrichment view](http://bioconductor.org/packages/release/BiocViews.html#___GeneSetEnrichment). 
+
+
+# A pathway enrichment analysis using reactome
+
+The package `r Biocpkg("ReactomePA") ` offers the possibility to test enrichment
+of specific pathways using the free, open-source, curated and peer reviewed 
+pathway [Reactome](http://www.reactome.org/s) pathway database [@Croft_2013; @Fabregat_2015]. 
+The package requires entrez identifiers, so we convert our PROBEIDs (trancript cluster identifiers) 
+to entrez identifiers using the function `mapIDs` from  the package `r Biocpkg("AnnotationDbi")`. 
+This will create a named vector that maps the PROBEIDs to the entrez ones.
+
+
+```{r mapIDsToEntrez, dependson="createFactorOfInterestingGenes", message = FALSE}
+entrez_ids <- mapIds(hugene10sttranscriptcluster.db, 
+      keys = rownames(table_CD), 
+      keytype="PROBEID",
+      column = "ENTREZID")
+```
+
+
+We can now run the enrichment analysis that performs a statistical test
+based on the hypergeoemtric distribution that is the same as a one sided Fisher--test, 
+which `r Biocpkg("topGO")` calls "Fisher--classic".
+Details can be found in the vignette of the `r Biocpkg("DOSE")` package [@Yu_2014].
+
+```{r runReactomeEnrichment, dependson="mapIDsToEntrez", eval = TRUE, cache=TRUE}
+reactome_enrich <- enrichPathway(gene = entrez_ids[DE_genes_CD], 
+                                universe = entrez_ids[c(DE_genes_CD, 
+                                                        back_genes)],
+                                organism = "human",
+                                pvalueCutoff = 0.05,
+                                qvalueCutoff = 0.9, 
+                                readable = TRUE)
+
+reactome_enrich@result$Description <- paste0(str_sub(
+                                    reactome_enrich@result$Description, 1, 20),
+                                    "...")
+
+head(summary(reactome_enrich))[1:6]
+```
+
+Note that we trimmed pathway names to 20 characters.
+
+## Visualizing the reactome based analysis results 
+
+The `r Biocpkg("reactomePA") ` package offers nice visualization capabilities.
+The top pathways can be displayed as a bar char that displays all categories
+with a p--value below the specified cutoff.
+
+```{r reactomeBar, dependson="runReactomeEnrichment", eval = TRUE}
+barplot(reactome_enrich)
+```
+
+The "enrichment map" displays the results of the enrichment analysis as 
+a graph, where the color represents the p--value of the pathway and the
+edge--thickness is proportional to the number of overlapping genes between
+two pathways.
+
+```{r enrichMap, dependson="runReactomeEnrichment", fig.width=6, fig.height = 7, eval = TRUE}
+enrichMap(reactome_enrich, n = 10, vertex.label.font = 2)
+```
+
+Again, we see pathways related to  signalling and immune response. 
+
+The package `r Biocpkg("clusterProfiler") ` [@Yu_2012] can also perform these analyses 
+using downloaded KEGG data. Furthermore, the package `r Biocpkg("EnrichmentBrowser") `
+[@Geistlinger_2016] additionally offers network--based enrichment analysis of individual 
+pathways. This allows the mapping of the expression data at hand to known
+regulatory interactions.
+
+
+# Session information
+
+As the last part of this document, we call the function *sessionInfo*,
+which reports the version numbers of R and all the packages used in
+this session. It is good practice to always keep such a record of this
+as it will help to track down what has happened in case an R script
+ceases to work or gives different results because the functions have
+been changed in a newer version of one of your packages. By including
+it at the bottom of a script, your reports will become more reproducible.
+
+The session information should also *always*
+be included in any emails to the
+[Bioconductor support site](https://support.bioconductor.org) along
+with all code used in the analysis.
+
+```{r, include=FALSE}
+## clean up to improve build stability
+gc()
+```
+
+```{r}
+sessionInfo()
+```
+
+
+# Acknowledgements
+
+The author would like to thank Vladislava Milchevskaya. Julian Gehring and Mike Smith for 
+helpful comments on and small contributions to the workflow. 
+This workflow draws a lot of inspiration from  the Bioconductor 
+books [@Bioc2005, @useRbook2008] as well as Love et. al.'s  workflow 
+for gene level analysis of RNA--Seq data [@Love_2015]. James W. MacDonald 
+provided valuable information on the evolution of Affymetrix arrays in some of 
+his posts of on the Biocondctor mailing list/support site. 
+The author would also like to thank him for some friendly personal 
+correspondence about the annotation resources available
+for microarrays in Bioconductor.
+
+<!--
+Dan Tenenbaum provided helpful technical support on the bioconductor
+workflow system. 
+-->
+
+# References
+
+
