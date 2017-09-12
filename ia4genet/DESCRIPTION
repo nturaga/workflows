@@ -1,0 +1,38 @@
+Package: ia4genet 
+Title: Integrative annotation for human genetics: Approaches with Bioconductor
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role=c("aut","cre"), "Vincent", "Carey", email = "stvjc@channing.harvard.edu"))
+Description: The study of genetic variation among human individuals
+  engenders substantial archives of details on individual genomes.
+  Details of genetic variation are interpreted using evolving
+  resources that are assembled at various scales,
+  institutionally and privately.  NCBI's dbSNP assembles
+  information on relatively small variants that occur with
+  some regularity in human populations.  The EMBL-EBI GWAS catalog
+  provides a curated view of replicated studies of genotype-phenotype
+  association.  This workflow reviews the use of Bioconductor packages
+  that help investigators interpret their own findings in studies
+  of human genetics.
+Depends: R (>= 3.3.0),
+         BiocStyle,
+         AnnotationHub,
+         gwascat,
+         GenomicFiles,
+         rtracklayer,
+         DT,
+         SIFT.Hsapiens.dbSNP132,
+         grasp2db,
+         BSgenome,
+         SNPlocs.Hsapiens.dbSNP144.GRCh37,
+         BSgenome.Hsapiens.UCSC.hg19,
+         Homo.sapiens,
+         GenomeInfoDb
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: SNP, GeneticVariability
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+URL:  

@@ -1,0 +1,390 @@
+---
+title: "Integrative annotation for human genetics: Approaches with Bioconductor"
+author: "Vincent J. Carey"
+abstract: >
+  The study of genetic variation among human individuals
+  engenders substantial archives of details on individual genomes.
+  Details of genetic variation are interpreted using evolving
+  resources that are assembled at various scales,
+  institutionally and privately.  NCBI's dbSNP assembles
+  information on relatively small variants that occur with
+  some regularity in human populations.  The EMBL-EBI GWAS catalog
+  provides a curated view of replicated studies of genotype-phenotype
+  association.  This workflow reviews the use of Bioconductor packages
+  that help investigators interpret their own findings in studies
+  of human genetics.
+vignette: >
+  %\VignetteIndexEntry{Integrative annotation for human genetics: Approaches with Bioconductor}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+output: 
+  BiocStyle::html_document
+---
+
+```{r setup,echo=FALSE,results="hide"}
+suppressPackageStartupMessages({
+library(BiocStyle)
+library(AnnotationHub)
+ah = AnnotationHub()
+library(gwascat)
+library(GenomicFiles)
+library(rtracklayer)
+library(DT)
+library(SIFT.Hsapiens.dbSNP132)
+library(grasp2db)
+library(BSgenome)
+library("SNPlocs.Hsapiens.dbSNP144.GRCh37")
+#library(BSgenome.Hsapiens.NCBI.GRCh38)
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(Homo.sapiens)
+})
+```
+
+# Background
+
+The table of contents of Vogel and Motulsky's [_Human Genetics: Problems and Approaches_](https://books.google.com/books?id=xuztCAAAQBAJ&lpg=PA6&dq=human%20genetics&pg=PR32#v=onepage&q=human%20genetics&f=false)
+is a worthy survey of concepts addressed in research on human
+genetics and genetic medicine.  The frontiers of knowledge in the field
+are shifting, and expectations are high.
+
+In this workflow, I aim to show how researchers can use R
+to interrogate important resources of use in human genetic
+epidemiology and medical genomics.  I show how to program with two
+genome-wide association study
+(GWAS) catalogs, 
+the [EMBL-EBI GWAS catalog](https://www.ebi.ac.uk/gwas/) 
+and the [NHLBI GRASP v2.0](http://iapps.nhlbi.nih.gov/GRASP/Overview.aspx).
+Aspects of findings reported in these studies are then
+integrated with new functional and structural annotation resources
+to aid in variant interpretation.
+An appendix provides
+brief treatment of "reference genome builds" for _Homo sapiens_,
+packages for querying contents of
+the [NCBI dbSNP](http://www.ncbi.nlm.nih.gov/SNP/),
+and tools for obtaining and programming with gene models.
+
+# Prologue: Reference builds, versions, metadata
+
+Knowledge of the human genome is evolving, but stability of
+resources for working scientists necessitates establishment
+of landmark reference versions every few years.  At present,
+the Genome Research Consortium version 38 is a well-established
+and widely used reference sequence.  In the appendix, we indicate
+how to use the basic nucleotide sequences for human chromosomes
+in Bioconductor.  In this section we focus on annotation of human
+genes and mRNA transcripts.  These annotations come from various
+projects and employ varied vocabularies.
+
+## UCSC-centric `Homo.sapiens`
+
+The most basic, unified gene annotation resource provided at present is the
+`r Biocannopkg("Homo.sapiens")` package.
+
+```{r lkho}
+library(Homo.sapiens)
+Homo.sapiens
+```
+
+This unites information about gene identifiers and
+functional annotations (contained in `r Biocannopkg("org.Hs.eg.db")`),
+the hierarchy of Gene Ontology (contained in `r Biocannopkg("GO.db")`),
+and structural information about gene models (exon addresses and
+gene and transcript models, contained in `r Biocannopkg("TxDb.Hsapiens.UCSC.knownGene.hg19")`).
+
+We can work with `Homo.sapiens` using the `r Biocpkg("OrganismDb")` utilities.
+For example, to find the chromosome for BRCA2 in build hg19,
+```{r lkho2}
+AnnotationDbi::select(Homo.sapiens, keytype="SYMBOL", keys="BRCA2", columns="TXCHROM")
+```
+
+
+
+# The gwascat package for the EMBL-EBI (formerly NHGRI) GWAS catalog
+
+## Basic operations, fields, and interactive tabulation 
+
+The NHGRI version of the GWAS catalog is presented using hg19 (GRCh37) coordinates.
+```{r lkg}
+library(gwascat)
+data(ebicat37)
+length(ebicat37)
+ebicat37
+```
+
+While there are `r length(ebicat37)` records, the number of unique loci is
+```{r lku}
+length(unique(mcols(ebicat37)$SNPS))
+```
+
+A full view of the metadata about each study result is available
+with the commands
+```{r eval=FALSE}
+library(DT)
+datatable(as.data.frame(mcols(ebicat37)), options=list(autoWidth=TRUE,
+  style="height:30px"), pageLength=5)
+```
+
+The following command generates
+a table restricting attention to records related to asthma.
+
+```{r gett}
+suppressWarnings({
+# for 3.3
+#aind = grep("sthma", mcols(ebicat37)[["DISEASE/TRAIT"]])
+aind = grep("sthma", mcols(ebicat37)[["DISEASE/TRAIT"]])
+easth = ebicat37[aind]
+# use datatable instead of head for interactive table
+head(as.data.frame(mcols(easth)), options=list(autoWidth=TRUE,
+  style="height:30px", pageLength=5))
+})
+```
+
+<!--
+
+## Navigating traits using the EMBL-EBI Experimental Factor Ontology
+
+Field `MAPPED_TRAIT_URI` includes a comma-delimited string with
+URIs referring to an ontology for traits and other factors relevant
+to biological experiments and observations.  The underlying
+ontology is available in the form of an annotated algebraic graph.
+
+```{r lkggg,eval=FALSE}
+data(efo.obo.g)
+efo.obo.g
+```
+There are over 16000 terms in the ontology.  Terms and term-related
+metadata are manipulated using methods of the `r Biocpkg("graph")`
+package.
+```{r lkgt,eval=FALSE}
+nodes(efo.obo.g)[1:4] # imported directly from OBO
+names(nodeData(efo.obo.g)[[1]])
+sapply(nodeData(efo.obo.g)[1:4], "[[", "name")
+```
+
+Let's obtain the EFO annotation for SNP `rs347412`.
+```{r lkefo,eval=FALSE}
+ind = which(mcols(ebicat38)$SNPS == "rs347412")
+urs = mcols(ebicat38)$MAPPED_TRAIT_URI[ind]
+urs
+```
+These entries must be converted to match the EFO OBO node
+nomenclature.  We then find the EFO names of the factors annotated
+to this SNP.
+```{r lkefo2,eval=FALSE}
+nn = uri2node(urs)
+nd = nodeData(efo.obo.g, nn)
+sapply(nd, "[[", "name")
+```
+
+The current representation of the ontology is a directed graph
+with links pointing from a term to its semantic parent.  We
+convert to an undirected graph to explore semantic neighborhoods of terms.
+The `adj` method will return the nodes adjacent to a specified node.
+Here we obtain the terms accessible from `respiratory system disease`
+with a single step.
+
+```{r explsem,eval=FALSE}
+rsdn = adj(ugraph(efo.obo.g), "EFO:0000684")  # respiratory system disease
+unlist(sapply(nodeData(efo.obo.g, rsdn[[1]]), "[[", "name"))
+```
+
+The `r Biocpkg("RBGL")` package can be used to deploy diverse graph algorithms
+against this ontology.
+
+Once a node name of interest has been found, `node2uri` can be used
+with code to find
+GWAS hits deemed relevant by the curators.  We'll work with hg19
+coordinates.
+
+```{r lkuri,eval=FALSE}
+data(ebicat37)
+library(GenomeInfoDb)
+seqlevelsStyle(ebicat37) = "UCSC"
+genome(ebicat37) = "hg19"
+e270 = ebicat37[ grep(node2uri("EFO:0000270"), mcols(ebicat37)$MAPPED_TRAIT_URI) ]
+length(e270)
+table(mcols(e270)$DISEASE.TRAIT)[1:5]
+```
+
+-->
+
+# GRASP
+
+GRASP is a much denser catalog requiring a different
+approach to archiving and query resolution.  Initial
+execution
+of `GRASP2()` will trigger a download of a 5GB
+SQLite database that can then be used with `r CRANpkg("dplyr")`
+programming.  This download will not occur again
+unless the database has been centrally updated.
+This document does not evaluate
+the following chunk, but the output is precomputed and
+left static.
+
+```{r dogra,eval=FALSE}
+library(grasp2db)
+v = tbl(GRASP2(), 'variant')
+v %>% filter(Phenotype == "Asthma")
+```
+
+```
+Source: sqlite 3.8.6 [AnnotationHub()[["AH21414"]]]
+From: variant [33,351 x 33]
+Filter: Phenotype == "Asthma" 
+
+       NHLBIkey     PMID HUPfield SNPid_dbSNP134 chr_hg19  pos_hg19
+          (chr)    (chr)    (chr)          (int)    (chr)     (int)
+1    2086050316 20860503 1/1/2014             18        7  11597475
+2   20860503866 20860503 1/1/2014            535        9 138396251
+3  208605031097 20860503 1/1/2014            686        5 174868700
+4  208605031186 20860503 1/1/2014            699        1 230845794
+5  208605031603 20860503 1/1/2014           1117        3  22085809
+6  208605031980 20860503 1/1/2014           1320       22  22599537
+7  208605032429 20860503 1/1/2014           1535       11  61597972
+8  208605032734 20860503 1/1/2014           1695       11  67352689
+9  208605032835 20860503 1/1/2014           1760        8    442079
+10 208605033085 20860503 1/1/2014           1899       15  41689232
+..          ...      ...      ...            ...      ...       ...
+Variables not shown: SNPidInPaper (chr), LocationWithinPaper (chr), Pvalue
+  (dbl), NegativeLog10PBin (int), Phenotype (chr), PlatformSNPsPassingQC (chr),
+  GWASancestryDescription (chr), InGene (chr), InLincRNA (chr), InMiRNA (chr),
+  InMiRNABS (chr), dbSNPfxn (chr), dbSNPMAF (chr), dbSNPallelesHetSe (chr),
+  dbSNPvalidation (int), dbSNPClinStatus (chr), ORegAnno (chr), ConservPredTFBS
+  (chr), HumanEnhancer (chr), RNAedit (chr), PolyPhen2 (chr), SIFT (chr),
+  LS_SNP (chr), UniProt (chr), EqtlMethMetabStudy (int),
+  DiscoverySampleDescription (chr), ReplicationSampleDescription (chr)
+```
+
+# Genomic contexts and interpretations of variants
+
+## Presence in exons
+
+We can map our GWAS hits to exons using the TxDb infrastructure.
+```{r lkexoh}
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+allex = exons(TxDb.Hsapiens.UCSC.hg19.knownGene)
+genome(allex) = "GRCh37"
+subsetByOverlaps( easth, allex )
+```
+
+## SIFT scores
+
+We query the SIFT resource using dbSNP identifiers.
+
+```{r lksift}
+rsids = mcols(easth)$SNPS
+library(SIFT.Hsapiens.dbSNP132)
+subst = c("RSID", "METHOD", "PREDICTION", "SCORE")
+sif = AnnotationDbi::select(SIFT.Hsapiens.dbSNP132, keys=rsids, cols=subst)
+#datatable(na.omit(sif))
+head(na.omit(sif))
+```
+
+## ChromHmm segmentation
+
+We'll use the fetal lung sample from the epigenomics road map
+as provided by `r Biocpkg("AnnotationHub")`.  We use prior
+knowledge that tag "E088" refers to the fetal lung tissue
+study.
+
+```{r lkchmm}
+library(AnnotationHub)
+ah = AnnotationHub()
+lq = AnnotationHub::query(ah, c("E088", "state"))
+lq
+flt = ah[["AH46941"]]
+genome(flt) = "GRCh37"
+cstates = subsetByOverlaps( flt, easth )
+sort(table(cstates$name), decreasing=TRUE)
+```
+
+In this way we can label variants according to their tissue-specific
+epigenetic contexts.
+
+## Regions of chromatin modification
+
+We'll check for coincidence of our GWAS hits with peaks identified
+with H3K4me1 marks in fetal lung fibroblasts, using component AH43875
+of the `r Biocpkg("AnnotationHub")`.
+```{r lkh3}
+library(AnnotationHub)
+ah = AnnotationHub()
+h3kf = ah[["AH43875"]]
+genome(h3kf) = "GRCh37"
+subsetByOverlaps(easth, h3kf)
+```
+
+# Conclusions
+
+The use of `r Biocpkg("GenomicRanges")` infrastructure
+for representing sets of DNA variants leads to fairly
+simple merge and intersection operations based on genomic
+coordinates.  These operations are useful for sorting variants
+into categories based on structural or functional modeling.
+Richly annotated ranges can be used to manage and program
+with GWAS catalogs, leading to efficient coupling of genomic
+assay results with findings of genetic epidemiology.
+
+# Appendix: Bioconductor infrastructure supporting genetic data analysis 
+
+## Reference nucleotide sequences for the human genome 
+
+<!--
+The most recent build of the human genomic sequence
+is labeled GRCh38.  Using Bioconductor, we can be very concrete about what this
+is.
+-->
+The second-to-last
+build of the human genomic sequence
+is labeled hg19.  Using Bioconductor, we can be very concrete about what this
+is.
+
+```{r lkhg}
+library(BSgenome.Hsapiens.UCSC.hg19)
+class(Hsapiens)
+Hsapiens
+class(Hsapiens$"chr17")
+Hsapiens$"chr17"
+```
+
+## From dbSNP to GRanges
+
+A number of packages represent snapshots of NCBI dbSNP.
+```{r lkbs}
+library(BSgenome)
+available.SNPs()
+```
+Functions available for a recent build are:
+```{r lklk}
+library("SNPlocs.Hsapiens.dbSNP144.GRCh37")
+ls(pos="package:SNPlocs.Hsapiens.dbSNP144.GRCh37")
+```
+We can retrieve data on a chromosome.  Note the
+peculiar nomenclature for chromosomes used with dbSNP.
+The `seqlevelsStyle` methods of `r Biocpkg("GenomeInfoDb")`
+can be used to manage these nomenclatures systematically.
+```{r lksn, cache=TRUE}
+snpsBySeqname(SNPlocs.Hsapiens.dbSNP144.GRCh37, "ch20")
+```
+
+<!--
+> names(mcols(ebicat37))
+ [1] "DATE ADDED TO CATALOG"          "PUBMEDID"                      
+ [3] "FIRST AUTHOR"                   "DATE"                          
+ [5] "JOURNAL"                        "LINK"                          
+ [7] "STUDY"                          "DISEASE/TRAIT"                 
+ [9] "INITIAL SAMPLE DESCRIPTION"     "REPLICATION SAMPLE DESCRIPTION"
+[11] "REGION"                         "CHR_ID"                        
+[13] "CHR_POS"                        "REPORTED GENE(S)"              
+[15] "MAPPED_GENE"                    "UPSTREAM_GENE_ID"              
+[17] "DOWNSTREAM_GENE_ID"             "SNP_GENE_IDS"                  
+[19] "UPSTREAM_GENE_DISTANCE"         "DOWNSTREAM_GENE_DISTANCE"      
+[21] "STRONGEST SNP-RISK ALLELE"      "SNPS"                          
+[23] "MERGED"                         "SNP_ID_CURRENT"                
+[25] "CONTEXT"                        "INTERGENIC"                    
+[27] "RISK ALLELE FREQUENCY"          "P-VALUE"                       
+[29] "PVALUE_MLOG"                    "P-VALUE (TEXT)"                
+[31] "OR or BETA"                     "95% CI (TEXT)"                 
+[33] "PLATFORM [SNPS PASSING QC]"     "CNV"                           
+[35] "MAPPED_TRAIT"                   "MAPPED_TRAIT_URI"              
+-->
