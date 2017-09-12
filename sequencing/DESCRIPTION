@@ -1,0 +1,39 @@
+Package: sequencing 
+Title: Introduction to Bioconductor for Sequence Data
+Version: 1.0.0
+Date: 2017-09-05
+Authors@R: c(person(role="aut", "Sonali", "Arora", email = "sarora@fredhutch.org"),person(role=c("aut", "cre"), "Martin", "Morgan", email = "martin.morgan@roswellpark.org"))
+Description: Bioconductor enables the analysis and comprehension of high-
+    throughput genomic data. We have a vast number of packages that allow
+    rigorous statistical analysis of large data while keeping
+    technological artifacts in mind. Bioconductor helps users place their
+    analytic results into biological context, with rich opportunities for
+    visualization. Reproducibility is an important goal in Bioconductor
+    analyses. Different types of analysis can be carried out using Bioconductor,
+    for example; Sequencing : RNASeq, ChIPSeq, variants, copy number etc.; 
+    Microarrays: expression, SNP, etc.; Domain specific analysis : Flow cytometry,
+    Proteomics etc. For these analyses, one typically imports and works with 
+    diverse sequence-related file types, including fasta, fastq, BAM, gtf, 
+    bed, and wig files, among others. Bioconductor packages support import, 
+    common and advanced sequence manipulation operations such as trimming, 
+    transformation, and alignment including quality assessment.
+Depends: R (>= 3.3.0),
+        GenomicRanges,
+        GenomicAlignments,
+        Biostrings,
+        Rsamtools,
+        ShortRead,
+        BiocParallel,
+        rtracklayer,
+        VariantAnnotation,
+        AnnotationHub,
+        BSgenome.Hsapiens.UCSC.hg19,
+        RNAseqData.HNRNPC.bam.chr14
+License: Artistic-2.0
+Encoding: UTF-8
+LazyData: true
+VignetteBuilder: knitr
+biocViews: Sequencing 
+Suggests: knitr, rmarkdown
+NeedsCompilation: no
+URL: https://www.bioconductor.org/help/workflows/sequencing/ 
