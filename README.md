@@ -1,6 +1,17 @@
 Errors and warnings
 ===
 
+
+# Packages which don't build, install (HELP WANTED)
+
+1. chipseqDB
+1. simpleSingleCell
+1. liftover
+1. proteomics
+
+
+# Packages which build and install errors and warnings
+
 ## rnaseqGene errors
 
 ```
