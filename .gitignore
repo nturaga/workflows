@@ -7,3 +7,4 @@ subs.html
 *.py
 *.pyc
 */.BBS*
+misc_dir/*
