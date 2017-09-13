@@ -363,8 +363,9 @@ We can retrieve data on a chromosome.  Note the
 peculiar nomenclature for chromosomes used with dbSNP.
 The `seqlevelsStyle` methods of `r Biocpkg("GenomeInfoDb")`
 can be used to manage these nomenclatures systematically.
+
 ```{r lksn, cache=TRUE}
-snpsBySeqname(SNPlocs.Hsapiens.dbSNP144.GRCh37, "ch20")
+snpsBySeqname(SNPlocs.Hsapiens.dbSNP144.GRCh37, "20")
 ```
 
 <!--
