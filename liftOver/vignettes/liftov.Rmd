@@ -22,12 +22,13 @@ library(GenomicRanges)
 library(rtracklayer)
 library(Homo.sapiens)
 library(BiocGenerics)
-if (!exists("cur")) data(cur)
+if (!exists("cur")) data("cur")
 ```
 ```{r lkOne,eval=FALSE}
 library(gwascat)
 cur = makeCurrentGwascat()  # result varies by day
 ```
+
 ```{r lkcur}
 cur
 ```
@@ -40,7 +41,7 @@ bring the data into R.
 
 ```{r getch}
 library(rtracklayer)
-ch = import.chain("data/hg38ToHg19.over.chain")
+ch = import.chain("hg38ToHg19.over.chain")
 ch
 str(ch[[1]])
 ```
