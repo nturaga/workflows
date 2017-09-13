@@ -8,3 +8,4 @@ subs.html
 *.pyc
 */.BBS*
 misc_dir/*
+.Rproj.user

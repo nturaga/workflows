@@ -111,3 +111,36 @@ Execution halted
 ERROR: loading failed
 * removing '/Library/Frameworks/R.framework/Versions/3.4/Resources/library/simpleSingleCell'
 ```
+
+
+## eQTL 
+
+```
+~/D/workflows ❯❯❯ R CMD build eQTL                                                          ⏎ master ⬆ ✱
+Bioconductor version 3.5 (BiocInstaller 1.26.1), ?biocLite for help
+* checking for file 'eQTL/DESCRIPTION' ... OK
+* preparing 'eQTL':
+* checking DESCRIPTION meta-information ... OK
+* installing the package to build vignettes
+* creating vignettes ... ERROR
+Quitting from lines 463-465 (cloudeqtl.Rmd)
+Error: processing vignette 'cloudeqtl.Rmd' failed with diagnostics:
+object 'sensSave' not found
+Execution halted
+```
+
+## liftover
+
+``` 
+~/D/workflows ❯❯❯ R CMD build liftOver                                           ⏎ master ⬆ ✱
+Bioconductor version 3.5 (BiocInstaller 1.26.1), ?biocLite for help
+* checking for file 'liftOver/DESCRIPTION' ... OK
+* preparing 'liftover':
+* checking DESCRIPTION meta-information ... OK
+* installing the package to build vignettes
+* creating vignettes ... ERROR
+Quitting from lines 33-34 (liftov.Rmd)
+Error: processing vignette 'liftov.Rmd' failed with diagnostics:
+object 'cur' not found
+Execution halted
+```
