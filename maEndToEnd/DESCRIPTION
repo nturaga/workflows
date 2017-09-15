@@ -1,8 +1,8 @@
-Package: MA-Workflow
+Package: maEndToEnd
 Title:  An end to end workflow for differential gene expression using Affymetrix microarrays
 Version: 1.0.0
 Date: 2017-09-05
-Authors@R: c(person(role=c("aut", "cre"), "Bernd", "Klaus", email = "bernd.klaus@embl.de"))
+Authors@R: person(role=c("aut", "cre"), "Bernd", "Klaus", email = "bernd.klaus@embl.de")
 Description: In this article, we walk through an end--to--end Affymetrix microarray differential
     expression workflow using Bioconductor packages. This workflow is directly 
     applicable to current "Gene" type arrays, e.g. the HuGene or MoGene arrays
@@ -53,4 +53,4 @@ VignetteBuilder: knitr
 biocViews: DifferentialExpression, Microarray, AffymetrixChip 
 Suggests: knitr, rmarkdown
 NeedsCompilation: no
-URL: https://www.bioconductor.org/help/workflows/ 
+URL: https://www.bioconductor.org/help/workflows/

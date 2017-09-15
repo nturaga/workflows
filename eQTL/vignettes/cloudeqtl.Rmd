@@ -42,7 +42,7 @@ library(biglm)
 library(lumiHumanAll.db)
 library(rmeta)
 library(SNPlocs.Hsapiens.dbSNP144.GRCh37)
-if (!exists("partceu100k_dt")) load("data/partceu100k_dt.rda")
+library(eQTL)
 })
 ```
 
@@ -443,7 +443,7 @@ plotsens = function (eqsout, ylab = "count of eQTL at given FDR",
 ```
 
 ```{r dosens,fig=TRUE}
-load("partceu100k_dt.rda")
+data(partceu100k_dt)
 library(foreach)  # basic function includes a %dopar%
 library(doParallel)
 library(parallel)
@@ -459,8 +459,10 @@ if (.Platform$OS.type != "windows") {
 eq1 = eqsens_dt(partceu100k_dt)
 ```
 ```{r nnn,echo=FALSE}
-load("sensSave.rda")
+data(sensSave)
 eq1 = sensSave
+```
+
 ```
 plotsens(eq1)
 ```
@@ -487,7 +489,7 @@ is targeted visualization.  The scoresCis function
 helps with this.  We load the data.table instance first.
 ```{r coded,eval=FALSE}
 library(data.table)
-load("partceu100k_dt.rda")
+data("partceu100k_dt.rda")
 scoresCis("CPNE1", partceu100k_dt)
 ```
 <!-- some code dropped here -->
